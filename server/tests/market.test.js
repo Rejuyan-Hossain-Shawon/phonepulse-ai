@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {syntheticMarket,marketSummary,validateMarketRows,COUNTRIES,BRANDS} from '../src/market.js';
+test('market fixtures cover countries brands and quarters',()=>{const rows=syntheticMarket();assert.equal(rows.length,COUNTRIES.length*BRANDS.length*3*4);assert.ok(rows.every(x=>x.isSynthetic&&x.sourceType==='synthetic'))});
+test('regional market shares add to approximately 100%',()=>{const result=marketSummary(syntheticMarket(),{country:'Bangladesh',year:2025,quarter:1});assert.equal(result.brands.length,BRANDS.length);assert.ok(Math.abs(result.brands.reduce((a,b)=>a+b.share,0)-100)<1);assert.equal(result.syntheticCount,result.count)});
+test('market CSV validation rejects negative units',()=>assert.throws(()=>validateMarketRows([{country:'India',brand:'Apple',year:2025,quarter:1,units:-5}])));
+test('market CSV validation marks user-supplied synthetic records',()=>{const row=validateMarketRows([{country:'India',brand:'Apple',year:'2025',quarter:'1',units:'50',isSynthetic:'true'}])[0];assert.equal(row.isSynthetic,true);assert.equal(row.units,50)});
