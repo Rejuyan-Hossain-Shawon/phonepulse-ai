@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';import mongoose from 'mongoose';import cors from 'cors';import helmet from 'helmet';import rateLimit from 'express-rate-limit';import dotenv from 'dotenv';import bcrypt from 'bcryptjs';import jwt from 'jsonwebtoken';import {z} from 'zod';import {analyze,aggregate} from './engine.js';
 import {syntheticMarket,marketSummary,validateMarketRows,MODELS,COUNTRIES} from './market.js';
 dotenv.config();const app=express();const port=Number(process.env.PORT||5002);const demo=process.env.DEMO_MODE!=='false';const jwtSecret=process.env.JWT_SECRET|| (demo?'development-only-change-me':'');if(!jwtSecret)throw Error('JWT_SECRET is required in production');app.use(helmet());app.use(cors({origin:process.env.CLIENT_ORIGIN?.split(',')||['http://localhost:5173','http://localhost:5174']}));app.use(express.json({limit:'2mb'}));app.use('/api',rateLimit({windowMs:60000,limit:180,standardHeaders:'draft-7',legacyHeaders:false}));
@@ -34,5 +36,21 @@ app.post('/api/watches/:id/run',auth,safe(async(req,res)=>{if(isDemo(req))return
 app.get('/api/alerts',auth,safe(async(req,res)=>res.json(isDemo(req)?demoAlerts:await Alert.find({owner:owner(req)}).sort({createdAt:-1}).limit(50).lean())));
 app.get('/api/export.csv',auth,safe(async(req,res)=>{const data=isDemo(req)?demoItems:await Item.find({owner:owner(req)}).sort({createdAt:-1}).limit(10000).lean();const fields=['createdAt','postedAt','source','region','brand','model','sentiment','confidence','emotion','aspects','text'];const csv=[fields.join(','),...data.map(row=>fields.map(k=>'"'+String(Array.isArray(row[k])?row[k].join('|'):row[k]??'').replaceAll('"','""')+'"').join(','))].join('\r\n');res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="phonepulse-analysis.csv"');res.send('\ufeff'+csv)}));
 app.get('/api/admin/stats',auth,safe(async(req,res)=>{if(req.user.role!=='admin')return res.status(403).json({error:'Admin access required'});res.json({users:await User.countDocuments(),analyses:await Item.countDocuments(),monitors:await Watch.countDocuments()})}));
+if (process.env.NODE_ENV === 'production') {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const clientDist = path.resolve(currentDir, '../../client/dist');
+
+  app.use(express.static(clientDist));
+
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({
+        error: 'API endpoint not found'
+      });
+    }
+
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
 app.use((err,req,res,next)=>{console.error(err.message);if(err.name==='ZodError')return res.status(400).json({error:err.issues.map(i=>`${i.path.join('.')}: ${i.message}`).join('; ')});res.status(500).json({error:'Server error'})});
 async function main(){if(process.env.MONGODB_URI){try{await mongoose.connect(process.env.MONGODB_URI,{serverSelectionTimeoutMS:7000});connected=true;console.log('MongoDB connected')}catch(e){console.error('MongoDB unavailable:',e.message)}}else console.log('No MongoDB configured. Demo mode available.');app.listen(port,()=>console.log(`PhonePulse API http://localhost:${port} | demo=${demo}`));const mins=Math.max(15,Number(process.env.COLLECT_INTERVAL_MINUTES)||30);setInterval(async()=>{if(!connected||!process.env.YOUTUBE_API_KEY)return;const watches=await Watch.find({enabled:true}).limit(100);for(const w of watches){try{await collect(w,w.owner)}catch(e){await Watch.updateOne({_id:w._id},{$set:{lastError:e.message,lastChecked:new Date()}})}}},mins*60000).unref()}main();
