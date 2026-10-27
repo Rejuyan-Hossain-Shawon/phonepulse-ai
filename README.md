@@ -1,3 +1,7 @@
+## Live Demo
+
+🚀 **Live Application:** https://phonepulse-shawon-3354d15ea0b5.herokuapp.com/
+
 # PhonePulse AI — Smartphone Consumer & Market Intelligence
 
 **Portfolio development edition (V2).** React + Express + MongoDB (optional) + optional local Python transformer. No paid API required to explore. Built to distinguish **real observations** from **synthetic demonstration data**.
